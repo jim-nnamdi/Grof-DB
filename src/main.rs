@@ -1,4 +1,4 @@
-use std::{fs::{File, OpenOptions}, io::{Write,Result}, path::{Path, PathBuf}, sync::{Arc, Mutex}};
+use std::{fs::{File, OpenOptions}, io::{self, BufRead, BufReader, Error, Result, Write}, path::{Path, PathBuf}, sync::{Arc, Mutex}};
 
 use serde::{Deserialize, Serialize};
 
@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 pub struct WNode {
     cot: u64,
     key: String,
-    val: String
+    val: Option<String>
 }
 
 pub struct WAL {
@@ -56,6 +56,17 @@ impl WAL {
         writeln!(*f,"{}", json)?;
         f.flush()?; f.sync_all()?;
         Ok(())
+    }
+
+    pub fn replay(dir: &Path) -> Result<Vec<WNode>> {
+        let fss = File::open(dir)?;
+        let buf = BufReader::new(fss);
+        buf.lines().map(|line| {
+            let line = line?;
+            let entry = serde_json::from_str(&line)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        Ok(entry)
+        }).collect()
     }
 }
 
