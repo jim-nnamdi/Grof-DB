@@ -52,7 +52,7 @@ impl WAL {
 
     pub fn append(&mut self, e: &WNode) -> Result<()> {
         let json  = serde_json::to_string(e)?;
-        let line = format!("{}", json);
+        let line = format!("{}\n", json);
         self.off = line.len() as u64;
         const SEG_SZ: u64 = 64 * 1024 * 1024;
         if self.off >= SEG_SZ { self.rotate()?; }
@@ -80,6 +80,33 @@ impl WAL {
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
         Ok(entry)
         }).collect()
+    }
+
+    pub fn replay_two(&mut self) -> Result<()> {
+        let mut entries = vec![];
+        let dir = &self.dir;
+        let mut segs: Vec<u64> = std::fs::read_dir(dir)?
+        .filter_map(|e| e.ok())
+        .filter_map(|de| {
+            let n =  de.file_name().into_string().unwrap_or_default();
+            n.strip_prefix("wal").and_then(|s| s.strip_suffix(".log"))
+            .and_then(|s| s.parse::<u64>().ok())
+        }).collect();
+
+        segs.sort_unstable();
+        for seg in segs {
+            let paf = format!("wal-{:06}.log", seg);
+            let fss = File::open(paf)?;
+            let buf = BufReader::new(fss);
+            let mut off = 0u64;
+            buf.lines().map(|line| {
+                let line = line.unwrap();
+                let entry: WNode = serde_json::from_str(&line).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e)).unwrap();
+                entries.push(entry);
+                off += line.len() as u64 + 1;
+            }).collect()
+        }
+        Ok(())
     }
 }
 
