@@ -1,7 +1,6 @@
-use std::{collections::BTreeMap, fs::{File, OpenOptions}, io::{self, BufRead, BufReader, Error, Result, Write}, path::{Path, PathBuf}, sync::{Arc, Mutex, RwLock}};
+use std::{collections::BTreeMap, fs::{File, OpenOptions}, io::{self, BufRead, BufReader, Result, Write}, path::{Path, PathBuf}, sync::{Arc, Mutex, RwLock}, time::{Duration, Instant}};
 
 use serde::{Deserialize, Serialize};
-
 
 #[derive(Serialize, Deserialize)]
 pub struct WNode {
@@ -23,7 +22,7 @@ pub struct WAL {
 }
 
 impl WAL {
-    pub fn open(dir:impl Into<PathBuf>) -> Result<Arc<Self>> {
+    pub fn open(dir:impl Into<PathBuf>) -> Result<Arc<Mutex<Self>>> {
         let dir = dir.into();
         std::fs::create_dir_all(&dir)?;
         let seg = Self::latest_segment(&dir)?;
@@ -33,7 +32,7 @@ impl WAL {
         .read(true)
         .open(Self::segment_path(&dir, seg))?;
         let offs = fss.metadata()?.len();
-        Ok(Arc::new(Self { dir, wrt: Mutex::new(fss), seg, off: offs }))
+        Ok(Arc::new(Mutex::new(Self { dir, wrt: Mutex::new(fss), seg, off: offs })))
     }
 
     pub fn segment_path(dir: &Path, seg: u64) -> PathBuf {
@@ -76,7 +75,7 @@ impl WAL {
         Ok(())
     }
 
-    pub fn replay(dir: impl Into<PathBuf>) -> Result<Vec<WNode>> {
+    pub fn replay(&self, dir: impl Into<PathBuf>) -> Result<Vec<WNode>> {
         let fss = File::open(dir.into())?;
         let buf = BufReader::new(fss);
         buf.lines().map(|line| {
@@ -87,7 +86,7 @@ impl WAL {
         }).collect()
     }
 
-    pub fn replay_two(dir: impl Into<PathBuf>) -> Result<Vec<WNode>> {
+    pub fn replay_two(&self, dir: impl Into<PathBuf>) -> Result<Vec<WNode>> {
         let mut entries = vec![];
         let mut segs: Vec<u64> = std::fs::read_dir(dir.into())?
         .filter_map(|e| e.ok())
@@ -120,8 +119,8 @@ pub struct MTable {
 }
 
 impl MTable {
-    pub fn new(dir: impl Into<PathBuf>) -> Result<Vec<WNode>> {
-        let wal = WAL::replay_two(dir.into());
+    pub fn new(dir: impl Into<PathBuf>, wal: &WAL) -> Result<Vec<WNode>> {
+        let wal = WAL::replay_two(wal,dir.into());
         wal
     }
     pub fn add(&self, key: &str, val: &str) {
@@ -133,4 +132,24 @@ impl MTable {
     }
 }
 
-fn main() {}
+fn bench(function_benchmark: impl FnOnce() -> ()) -> Duration {
+    let start = Instant::now();
+    function_benchmark();
+    start.elapsed()
+}
+
+fn main() {
+    let new_node = WNode::new("jim", "sam");
+    let new_wal = WAL::open("./data").unwrap();
+    new_wal.lock().unwrap().append(&new_node).unwrap();
+    
+    let dur = bench(|| {
+        new_wal.lock().unwrap().replay("./data/wal-000000.log").unwrap();
+    });
+    println!("{:?}", dur);
+
+    let dur = bench(|| {
+        new_wal.lock().unwrap().replay_two("./data").unwrap();
+    });
+    println!("{:?}", dur);
+}
