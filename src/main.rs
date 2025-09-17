@@ -51,15 +51,28 @@ impl WAL {
     }
 
     pub fn append(&mut self, e: &WNode) -> Result<()> {
-        let mut f = self.wrt.lock().unwrap();
         let json  = serde_json::to_string(e)?;
-        writeln!(*f,"{}", json)?;
+        let line = format!("{}", json);
+        self.off = line.len() as u64;
+        const SEG_SZ: u64 = 64 * 1024 * 1024;
+        if self.off >= SEG_SZ { self.rotate()?; }
+
+        let mut f = self.wrt.lock().unwrap();
+        f.write_all(line.as_bytes())?;
         f.flush()?; f.sync_all()?;
         Ok(())
     }
 
-    pub fn replay(dir: &Path) -> Result<Vec<WNode>> {
-        let fss = File::open(dir)?;
+    fn rotate(&mut self) -> Result<()>{
+        self.seg += 1; self.off = 0;
+        let path = self.dir.join(format!("wal-{:06}.log", self.seg));
+        let file = OpenOptions::new().create(true).append(true).read(true).open(&path)?;
+        self.wrt = Mutex::new(file);
+        Ok(())
+    }
+
+    pub fn replay(&self) -> Result<Vec<WNode>> {
+        let fss = File::open(&self.dir)?;
         let buf = BufReader::new(fss);
         buf.lines().map(|line| {
             let line = line?;
