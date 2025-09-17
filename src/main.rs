@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, fs::{File, OpenOptions}, io::{self, BufRead, BufReader, Error, Result, Write}, path::{Path, PathBuf}, sync::{Arc, Mutex}};
+use std::{collections::BTreeMap, fs::{File, OpenOptions}, io::{self, BufRead, BufReader, Error, Result, Write}, path::{Path, PathBuf}, sync::{Arc, Mutex, RwLock}};
 
 use serde::{Deserialize, Serialize};
 
@@ -7,6 +7,12 @@ use serde::{Deserialize, Serialize};
 pub struct WNode {
     key: String,
     val: Option<String>
+}
+
+impl WNode {
+    pub fn new(key: &str, val: &str) -> Self {
+        Self { key: key.into(), val: Some(val.into())}
+    }
 }
 
 pub struct WAL {
@@ -109,20 +115,21 @@ impl WAL {
 }
 
 pub struct MTable {
-    DBuf: BTreeMap<String, Option<String>>
+    DBuf: Arc<RwLock<BTreeMap<String, Option<String>>>>,
+    size: Arc<RwLock<usize>>
 }
 
 impl MTable {
-    pub fn add(&self, key: &str, val: &str) -> Self {
-        let wnode = WNode{key: key.into(), val:Some(val.into())};
-        let mut btm = BTreeMap::new();
-        btm.insert(wnode.key, wnode.val);
-        Self { DBuf:btm}
-    }
-
     pub fn new(dir: impl Into<PathBuf>) -> Result<Vec<WNode>> {
         let wal = WAL::replay_two(dir.into());
         wal
+    }
+    pub fn add(&self, key: &str, val: &str) {
+        let wnode = WNode::new(key, val);
+        let mut dat = self.DBuf.write().unwrap();
+        dat.insert(wnode.key.into(), wnode.val);
+        let mut s = self.size.write().unwrap();
+        *s += key.len() + val.len();
     }
 }
 
