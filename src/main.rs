@@ -1,11 +1,10 @@
-use std::{fs::{File, OpenOptions}, io::{self, BufRead, BufReader, Error, Result, Write}, path::{Path, PathBuf}, sync::{Arc, Mutex}};
+use std::{collections::BTreeMap, fs::{File, OpenOptions}, io::{self, BufRead, BufReader, Error, Result, Write}, path::{Path, PathBuf}, sync::{Arc, Mutex}};
 
 use serde::{Deserialize, Serialize};
 
 
 #[derive(Serialize, Deserialize)]
 pub struct WNode {
-    cot: u64,
     key: String,
     val: Option<String>
 }
@@ -71,8 +70,8 @@ impl WAL {
         Ok(())
     }
 
-    pub fn replay(&self) -> Result<Vec<WNode>> {
-        let fss = File::open(&self.dir)?;
+    pub fn replay(dir: impl Into<PathBuf>) -> Result<Vec<WNode>> {
+        let fss = File::open(dir.into())?;
         let buf = BufReader::new(fss);
         buf.lines().map(|line| {
             let line = line?;
@@ -82,10 +81,9 @@ impl WAL {
         }).collect()
     }
 
-    pub fn replay_two(&mut self) -> Result<()> {
+    pub fn replay_two(dir: impl Into<PathBuf>) -> Result<Vec<WNode>> {
         let mut entries = vec![];
-        let dir = &self.dir;
-        let mut segs: Vec<u64> = std::fs::read_dir(dir)?
+        let mut segs: Vec<u64> = std::fs::read_dir(dir.into())?
         .filter_map(|e| e.ok())
         .filter_map(|de| {
             let n =  de.file_name().into_string().unwrap_or_default();
@@ -106,7 +104,25 @@ impl WAL {
                 off += line.len() as u64 + 1;
             }).collect()
         }
-        Ok(())
+        Ok(entries)
+    }
+}
+
+pub struct MTable {
+    DBuf: BTreeMap<String, Option<String>>
+}
+
+impl MTable {
+    pub fn add(&self, key: &str, val: &str) -> Self {
+        let wnode = WNode{key: key.into(), val:Some(val.into())};
+        let mut btm = BTreeMap::new();
+        btm.insert(wnode.key, wnode.val);
+        Self { DBuf:btm}
+    }
+
+    pub fn new(dir: impl Into<PathBuf>) -> Result<Vec<WNode>> {
+        let wal = WAL::replay_two(dir.into());
+        wal
     }
 }
 
