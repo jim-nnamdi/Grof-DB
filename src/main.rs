@@ -1,7 +1,14 @@
-use std::{fs::{File, OpenOptions}, io::Result, path::{Path, PathBuf}, sync::{Arc, Mutex}};
+use std::{fs::{File, OpenOptions}, io::{Write,Result}, path::{Path, PathBuf}, sync::{Arc, Mutex}};
+
+use serde::{Deserialize, Serialize};
 
 
-
+#[derive(Serialize, Deserialize)]
+pub struct WNode {
+    cot: u64,
+    key: String,
+    val: String
+}
 
 pub struct WAL {
     dir: PathBuf,
@@ -41,6 +48,14 @@ impl WAL {
             }
         }
         Ok(max)
+    }
+
+    pub fn append(&mut self, e: &WNode) -> Result<()> {
+        let mut f = self.wrt.lock().unwrap();
+        let json  = serde_json::to_string(e)?;
+        writeln!(*f,"{}", json)?;
+        f.flush()?; f.sync_all()?;
+        Ok(())
     }
 }
 
