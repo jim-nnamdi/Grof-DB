@@ -20,6 +20,25 @@ pub mod memtable {
             let wal = WAL::replay_two(dir.into());
             wal
         }
+
+        pub fn get(&self, key: &str) -> Result<Option<String>> {
+            let dat = self.dbuf.read().unwrap();
+            /* dat.get(key).and_then(|s| s.clone()) */
+            /* dat.get(key).cloned().flatten() */
+            let mat = dat.get(key).cloned();
+            match mat {
+                Some(v) => {return Ok(v);},
+                None => {Ok(None)}
+            }
+        }
+
+        pub fn read(&self){
+            let mat = self.dbuf.read().unwrap();
+            for (k, v) in mat.iter().enumerate() {
+                println!(" k = {:?} v = {:?}", k, v)
+            }
+        }
+
         pub fn put(&self, key: &str, val: &str){
             let sz =self.size.write().unwrap();
             if *sz as u64 >= MT_SIZ { 
