@@ -1,8 +1,10 @@
 pub mod memtable {
+    #![allow(dead_code,unused_variables)]
+    
     use std::io::Result;
     use std::sync::{Arc, RwLock};
     use std::collections::BTreeMap;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use SDB::lsm::{WAL,WNode};
 
     use crate::sstable::sstable;
@@ -16,8 +18,13 @@ pub mod memtable {
     }
 
     impl MTable {
-        pub fn new(dir: impl Into<PathBuf>) -> Result<Self> {
-            let wal = WAL::replay_two(dir.into())?;
+        pub fn new(dir: &Path) -> Result<Self> {
+            if !dir.exists() {
+                std::fs::create_dir_all(dir)?;
+            }
+            let curr_seg = Self::maxseg(dir)?;
+            let seg_path = Self::segpath(dir,curr_seg);
+            let wal = WAL::replay(&seg_path)?;
             let mut dat = BTreeMap::new();
             let mut sz = 0;
             for i in wal.iter() {
@@ -26,8 +33,32 @@ pub mod memtable {
                     sz += i.key.len() + v.len();
                 } else { sz += i.key.len()}
             }
+
+            dbg!(&dat.len());
             let buf = Arc::new(RwLock::new(dat));
             Ok(Self {dbuf: buf, size: Arc::new(RwLock::new(sz))})
+        }
+
+        pub fn segpath(dir: &Path, seg: u64) -> PathBuf {
+            dir.join(format!("wal-{:06}.log", seg))
+        }
+
+        pub fn maxseg(dir: &Path) -> Result<u64> {
+            if !dir.exists(){
+                std::fs::create_dir_all(dir)?;
+                return Ok(0);
+            }
+            let mut seg = 0;
+            let memf = std::fs::read_dir(dir)?;
+            for e in memf {
+                let name = e?.file_name().into_string().unwrap_or_default();
+                if let Some(s) =  name.strip_prefix("wal").and_then(|s| s.strip_suffix(".log")) {
+                    if let Ok(n) = s.parse::<u64>() {
+                        seg = seg.max(n)
+                    }
+                }
+            }
+            Ok(seg)
         }
 
         pub fn get(&self, key: &str) -> Result<Option<String>> {
