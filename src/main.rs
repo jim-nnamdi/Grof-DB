@@ -1,9 +1,12 @@
 use SDB::lsm;
 
-pub mod memtable;
+mod memtable;
+use crate::memtable::memtable::{memtable::MTable};
+
 pub mod sstable;
 
-fn main() {
+#[allow(dead_code)]
+fn manual_benchmarking(){
     let new_node = lsm::WNode::new("jim", "sam");
     let new_wal = lsm::WAL::open("./data").unwrap();
     new_wal.lock().unwrap().append(&new_node).unwrap();
@@ -17,4 +20,7 @@ fn main() {
         lsm::WAL::replay_two("./data").unwrap();
     });
     println!("{:?}", dur);
+}
+
+fn main() {
 }
