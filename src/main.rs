@@ -1,5 +1,6 @@
 use SDB::lsm;
 
+mod memtable;
 fn main() {
     let new_node = lsm::WNode::new("jim", "sam");
     let new_wal = lsm::WAL::open("./data").unwrap();
