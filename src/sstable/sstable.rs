@@ -1,10 +1,12 @@
 pub mod sstable {
     use std::{
         fs::{File, OpenOptions},
-        io::{self, Result},
+        io::{self, BufRead, BufReader, Result},
         path::{Path, PathBuf},
         sync::{Arc, Mutex},
     };
+
+    use SDB::lsm::WNode;
 
     pub struct SSTable {
         dir: PathBuf,
@@ -45,6 +47,28 @@ pub mod sstable {
                 }
             }
             Ok(max)
+        }
+
+        pub fn append_to_sstable(&self, dir: impl Into<PathBuf>) {
+            let mut svec = vec![];
+            let mut fseg: Vec<u64> = std::fs::read_dir(&dir.into()).unwrap()
+                .filter_map(|e| e.ok())
+                .filter_map(|de| {
+                    let name = de.file_name().into_string().unwrap_or_default();
+                    name.strip_prefix("sstable").and_then(|s| s.strip_suffix(".log")).and_then(|s| s.parse::<u64>().ok())
+                }).collect();
+
+                fseg.sort_unstable();
+                for seg in fseg {
+                    let pat = format!("sstable-{:06}.log", seg);
+                    let fz = File::open(pat).unwrap();
+                    let bz = BufReader::new(fz);
+                    let _ = bz.lines().map(|line|{
+                        let line = line.unwrap();
+                        let node: WNode = serde_json::from_str(&line).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e)).unwrap();
+                        svec.push(node);
+                    }).collect::<Vec<_>>();
+                }
         }
     }
 }

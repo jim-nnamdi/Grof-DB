@@ -1,5 +1,6 @@
 pub mod memtable {
-    use std::io::Result;
+    use std::fs::File;
+    use std::io::{self, BufRead, BufReader, Result};
     use std::sync::{Arc, RwLock};
     use std::collections::BTreeMap;
     use std::path::{Path, PathBuf};
@@ -40,7 +41,8 @@ pub mod memtable {
             const MT_SIZ: u64 = 64 * 1024 * 1024;
             let sz =  self.size.read().unwrap();
             if *sz as u64 >= MT_SIZ {
-                let sstable  = sstable::sstable::SSTable::new(&dir)?;
+                let stable  = sstable::sstable::SSTable::new(&dir)?;
+                stable.append_to_sstable(dir);
             }
             Ok(())
         }
