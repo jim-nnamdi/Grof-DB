@@ -5,6 +5,8 @@ pub mod memtable {
     use std::path::{Path, PathBuf};
     use SDB::lsm::{WAL,WNode};
 
+    use crate::sstable::sstable;
+
     pub struct MTable {
         DBuf: Arc<RwLock<BTreeMap<String, Option<String>>>>,
         size: Arc<RwLock<usize>>,
@@ -32,6 +34,15 @@ pub mod memtable {
                     *sz -= v.len()
                 }
             }
+        }
+
+        pub fn flush(&self, dir: &Path) -> Result<()>{
+            const MT_SIZ: u64 = 64 * 1024 * 1024;
+            let sz =  self.size.read().unwrap();
+            if *sz as u64 >= MT_SIZ {
+                let sstable  = sstable::sstable::SSTable::new(&dir)?;
+            }
+            Ok(())
         }
     }
 }
