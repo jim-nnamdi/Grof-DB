@@ -1,14 +1,16 @@
 pub mod memtable {
+    #![allow(dead_code,unused_variables)]
+    
     use std::io::Result;
     use std::sync::{Arc, RwLock};
     use std::collections::BTreeMap;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use SDB::lsm::{WAL,WNode};
 
     use crate::sstable::sstable;
 
     const MT_SIZ: u64 = 64 * 1024 * 1024;
-    const MT_DIR: &str = "./data/memtable";
+    pub const MT_DIR: &str = "./data/memtable";
 
     pub struct MTable {
         dbuf: Arc<RwLock<BTreeMap<String, Option<String>>>>,
@@ -16,9 +18,47 @@ pub mod memtable {
     }
 
     impl MTable {
-        pub fn new(dir: impl Into<PathBuf>) -> Result<Vec<WNode>> {
-            let wal = WAL::replay_two(dir.into());
-            wal
+        pub fn new(dir: &Path) -> Result<Self> {
+            if !dir.exists() {
+                std::fs::create_dir_all(dir)?;
+            }
+            let curr_seg = Self::maxseg(dir)?;
+            let seg_path = Self::segpath(dir,curr_seg);
+            let wal = WAL::replay(&seg_path)?;
+            let mut dat = BTreeMap::new();
+            let mut sz = 0;
+            for i in wal.iter() {
+                dat.insert(i.key.clone(), i.val.clone());
+                if let Some(v) = &i.val {
+                    sz += i.key.len() + v.len();
+                } else { sz += i.key.len()}
+            }
+
+            dbg!(&dat.len());
+            let buf = Arc::new(RwLock::new(dat));
+            Ok(Self {dbuf: buf, size: Arc::new(RwLock::new(sz))})
+        }
+
+        pub fn segpath(dir: &Path, seg: u64) -> PathBuf {
+            dir.join(format!("wal-{:06}.log", seg))
+        }
+
+        pub fn maxseg(dir: &Path) -> Result<u64> {
+            if !dir.exists(){
+                std::fs::create_dir_all(dir)?;
+                return Ok(0);
+            }
+            let mut seg = 0;
+            let memf = std::fs::read_dir(dir)?;
+            for e in memf {
+                let name = e?.file_name().into_string().unwrap_or_default();
+                if let Some(s) =  name.strip_prefix("wal").and_then(|s| s.strip_suffix(".log")) {
+                    if let Ok(n) = s.parse::<u64>() {
+                        seg = seg.max(n)
+                    }
+                }
+            }
+            Ok(seg)
         }
 
         pub fn get(&self, key: &str) -> Result<Option<String>> {
@@ -26,6 +66,7 @@ pub mod memtable {
             /* dat.get(key).and_then(|s| s.clone()) */
             /* dat.get(key).cloned().flatten() */
             let mat = dat.get(key).cloned();
+            dbg!(key);
             match mat {
                 Some(v) => {return Ok(v);},
                 None => {Ok(None)}
@@ -34,26 +75,27 @@ pub mod memtable {
 
         pub fn read(&self){
             let mat = self.dbuf.read().unwrap();
-            for (k, v) in mat.iter().enumerate() {
+            for (k, v) in mat.iter() {
                 println!(" k = {:?} v = {:?}", k, v)
             }
         }
 
-        pub fn put(&self, key: &str, val: &str){
-            let sz =self.size.write().unwrap();
+        pub fn put(&self, key: &str, val: &str) -> Result<()>{
+            let mut sz =self.size.write().unwrap();
             if *sz as u64 >= MT_SIZ { 
                 self.flush(MT_DIR).unwrap();
             }
             let wnode = WNode::new(key, val);
             let mut dat = self.dbuf.write().unwrap();
             dat.insert(wnode.key.into(), wnode.val);
-            let mut s = self.size.write().unwrap();
-            *s += key.len() + val.len();
+            *sz += key.len() + val.len();
+            dbg!(*sz);
+            Ok(())
         }
 
         pub fn remove(&self, key: &str) {
             let mut buf = self.dbuf.write().unwrap();
-            if let Some(val) = buf.remove(key.into()) {
+            if let Some(val) = buf.remove(key) {
                 let mut sz = self.size.write().unwrap();
                 *sz -= key.len();
                 if let Some(v) = val{
