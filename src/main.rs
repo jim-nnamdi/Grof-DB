@@ -3,7 +3,6 @@ use std::path::Path;
 use SDB::lsm;
 
 mod memtable;
-use crate::memtable::memtable::{memtable::MTable};
 
 pub mod sstable;
 
