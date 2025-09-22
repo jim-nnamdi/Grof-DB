@@ -1,0 +1,38 @@
+use std::hash::{DefaultHasher, Hash, Hasher};
+
+
+pub struct BloomFilter {
+    bits: Vec<u8>,
+    size: u64,
+    bfns: u64
+}
+
+impl BloomFilter {
+    pub fn new(size: u64, k: u64) -> Self {
+        Self { bits: vec![0; size as usize], size, bfns: k }
+    }
+
+    pub fn hash<T:Hash>(&self, item: &T, seed: u64) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        seed.hash(&mut hasher);
+        item.hash(&mut hasher);
+        hasher.finish() % self.size
+    }
+
+    pub fn insert<T:Hash>(&mut self, item: &T) {
+        for i in 0..self.bfns {
+            let h = self.hash(item, i);
+            self.bits[h as usize] = 1;
+        }
+    }
+
+    pub fn contains<T:Hash>(&self, item:&T) -> bool {
+        for i in 0..self.bfns {
+            let h = self.hash(item, i);
+            if self.bits[h as usize] == 1 {
+                return true;
+            }
+        }
+        false
+    }
+}

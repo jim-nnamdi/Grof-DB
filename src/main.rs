@@ -5,6 +5,7 @@ use SDB::lsm;
 mod memtable;
 
 pub mod sstable;
+pub mod bloom;
 
 #[allow(dead_code)]
 fn manual_benchmarking(){
