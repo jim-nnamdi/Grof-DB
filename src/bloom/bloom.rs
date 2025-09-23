@@ -35,17 +35,17 @@ impl BloomFilter {
     pub fn insert<T:Hash>(&mut self, item: &T) {
         for i in 0..self.bfns {
             let h = self.hash(item, i);
-            self.bits[h as usize] = 1;
+            self.setbit(h);
         }
     }
 
     pub fn contains<T:Hash>(&self, item:&T) -> bool {
         for i in 0..self.bfns {
             let h = self.hash(item, i);
-            if self.bits[h as usize] == 1 {
-                return true;
+            if !self.getbit(h) {
+                return false;
             }
         }
-        false
+        true
     }
 }
