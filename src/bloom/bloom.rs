@@ -1,4 +1,4 @@
-use std::{hash::{DefaultHasher, Hash, Hasher}, ops::BitAnd};
+use std::{hash::{DefaultHasher, Hash, Hasher}};
 
 
 pub struct BloomFilter {
@@ -9,7 +9,8 @@ pub struct BloomFilter {
 
 impl BloomFilter {
     pub fn new(size: u64, k: u64) -> Self {
-        Self { bits: vec![0; size as usize], size, bfns: k }
+        let byt =  (size as usize  + 7) / 8;
+        Self { bits: vec![0; byt], size, bfns: k }
     }
 
     pub fn hash<T:Hash>(&self, item: &T, seed: u64) -> u64 {
@@ -22,7 +23,7 @@ impl BloomFilter {
     pub fn setbit(&mut self, index: u64) {
         let byte_siz = (index / 8) as usize;
         let bit_siz = (index % 8) as u8;
-        self.bits  [byte_siz] = 1 << bit_siz
+        self.bits[byte_siz] |= 1 << bit_siz
     }
 
     pub fn getbit(&self, index:u64) -> bool {
