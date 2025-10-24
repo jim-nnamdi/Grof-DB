@@ -8,6 +8,7 @@ mod memtable;
 
 pub mod sstable;
 pub mod bloom;
+pub mod network;
 
 #[allow(dead_code)]
 fn manual_benchmarking_wal(){
